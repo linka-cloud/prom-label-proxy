@@ -207,6 +207,10 @@ func (r *routes) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *routes) ModifyResponse(resp *http.Response) error {
+	// remove all cors headers to prevent duplicated header when proxied
+	for _, v := range []string{"Access-Control-Allow-Origin", "Access-Control-Allow-Methods", "Access-Control-Allow-Headers"} {
+		resp.Header.Del(v)
+	}
 	m, found := r.modifiers[resp.Request.URL.Path]
 	if !found {
 		// Return the server's response unmodified.
