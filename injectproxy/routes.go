@@ -147,7 +147,8 @@ func NewRoutes(upstream *url.URL, label string, opts ...Option) (*routes, error)
 
 	errs.Add(
 		mux.Handle("/api/v2/silences", r.enforceLabel(enforceMethods(r.silences, "GET", "POST"))),
-		mux.Handle("/api/v2/silence/", r.enforceLabel(enforceMethods(r.deleteSilence, "DELETE"))),
+		mux.Handle("/api/v2/silence/", r.enforceLabel(enforceMethods(r.silence, "GET", "DELETE"))),
+		mux.Handle("/api/v2/alerts", r.enforceLabel(enforceMethods(r.passthrough, "GET"))),
 	)
 
 	if err := errs.Err(); err != nil {
@@ -177,8 +178,10 @@ func NewRoutes(upstream *url.URL, label string, opts ...Option) (*routes, error)
 
 	r.mux = mux.m
 	r.modifiers = map[string]func(*http.Response) error{
-		"/api/v1/rules":  modifyAPIResponse(r.filterRules),
-		"/api/v1/alerts": modifyAPIResponse(r.filterAlerts),
+		"/api/v1/rules":         modifyAPIResponse(r.filterRules),
+		"/api/v1/alerts":        modifyAPIResponse(r.filterAlerts),
+		"/api/v2/alerts":        r.filterAMAlerts,
+		"/api/v2/alerts/groups": r.filterAMAlertGroups,
 	}
 	proxy.ModifyResponse = r.ModifyResponse
 	return r, nil

@@ -18,6 +18,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -36,8 +37,25 @@ type apiResponse struct {
 
 func getAPIResponse(resp *http.Response) (*apiResponse, error) {
 	defer resp.Body.Close()
-	reader := resp.Body
+	reader, err := getResponseReader(resp)
+	if err != nil {
+		return nil, err
+	}
 
+	var apir apiResponse
+	if err := json.NewDecoder(reader).Decode(&apir); err != nil {
+		return nil, errors.Wrap(err, "JSON decoding")
+	}
+
+	if apir.Status != "success" {
+		return nil, fmt.Errorf("unexpected response status: %q", apir.Status)
+	}
+
+	return &apir, nil
+}
+
+func getResponseReader(resp *http.Response) (io.Reader, error) {
+	reader := resp.Body
 	if resp.Header.Get("Content-Encoding") == "gzip" && !resp.Uncompressed {
 		var err error
 		reader, err = gzip.NewReader(resp.Body)
@@ -53,17 +71,7 @@ func getAPIResponse(resp *http.Response) (*apiResponse, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
-
-	var apir apiResponse
-	if err := json.NewDecoder(reader).Decode(&apir); err != nil {
-		return nil, errors.Wrap(err, "JSON decoding")
-	}
-
-	if apir.Status != "success" {
-		return nil, fmt.Errorf("unexpected response status: %q", apir.Status)
-	}
-
-	return &apir, nil
+	return reader, nil
 }
 
 type rulesData struct {
@@ -180,21 +188,22 @@ func modifyAPIResponse(f func(string, *apiResponse) (interface{}, error)) func(*
 			return err
 		}
 
-		b, err := json.Marshal(v)
+		apir.Data, err = json.Marshal(v)
 		if err != nil {
 			return errors.Wrap(err, "can't replace data")
 		}
-		apir.Data = json.RawMessage(b)
-
-		var buf bytes.Buffer
-		if err = json.NewEncoder(&buf).Encode(apir); err != nil {
-			return errors.Wrap(err, "can't encode API response")
-		}
-		resp.Body = ioutil.NopCloser(&buf)
-		resp.Header["Content-Length"] = []string{fmt.Sprint(buf.Len())}
-
-		return nil
+		return encodeResponse(resp, apir)
 	}
+}
+
+func encodeResponse(resp *http.Response, v interface{}) error {
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(v); err != nil {
+		return errors.Wrap(err, "can't encode API response")
+	}
+	resp.Body = ioutil.NopCloser(&buf)
+	resp.Header["Content-Length"] = []string{fmt.Sprint(buf.Len())}
+	return nil
 }
 
 func (r *routes) filterRules(lvalue string, resp *apiResponse) (interface{}, error) {
@@ -240,4 +249,75 @@ func (r *routes) filterAlerts(lvalue string, resp *apiResponse) (interface{}, er
 	}
 
 	return &alertsData{Alerts: filtered}, nil
+}
+
+type amAlertGroup struct {
+	Labels   labels.Labels `json:"labels"`
+	Receiver struct {
+		Name string `json:"name"`
+	} `json:"receiver"`
+	Alerts []*amAlert `json:"alerts"`
+}
+
+type amAlert struct {
+	Annotations labels.Labels `json:"annotations"`
+	Receivers   []struct {
+		Name string `json:"name"`
+	} `json:"receivers"`
+	Fingerprint string    `json:"fingerprint"`
+	Startsat    time.Time `json:"startsAt"`
+	Updatedat   time.Time `json:"updatedAt"`
+	Endsat      time.Time `json:"endsAt"`
+	Status      struct {
+		State       string   `json:"state"`
+		Silencedby  []string `json:"silencedBy"`
+		Inhibitedby []string `json:"inhibitedBy"`
+	} `json:"status"`
+	Labels       labels.Labels `json:"labels"`
+	Generatorurl string        `json:"generatorURL"`
+}
+
+func (r *routes) filterAMAlerts(resp *http.Response) error {
+	defer resp.Body.Close()
+	lvalue := mustLabelValue(resp.Request.Context())
+	reader, err := getResponseReader(resp)
+	if err != nil {
+		return err
+	}
+	var data []*amAlert
+	if err := json.NewDecoder(reader).Decode(&data); err != nil {
+		return errors.Wrap(err, "can't decode alertgroups data")
+	}
+	return encodeResponse(resp, r.filterAMAlertsByLabelValue(lvalue, data))
+}
+
+func (r *routes) filterAMAlertGroups(resp *http.Response) error {
+	defer resp.Body.Close()
+	lvalue := mustLabelValue(resp.Request.Context())
+	reader, err := getResponseReader(resp)
+	if err != nil {
+		return err
+	}
+	var data []*amAlertGroup
+	if err := json.NewDecoder(reader).Decode(&data); err != nil {
+		return errors.Wrap(err, "can't decode alertgroups data")
+	}
+
+	for _, alertgroup := range data {
+		alertgroup.Alerts = r.filterAMAlertsByLabelValue(lvalue, alertgroup.Alerts)
+	}
+	return encodeResponse(resp, data)
+}
+
+func (r *routes) filterAMAlertsByLabelValue(lvalue string, alerts []*amAlert) []*amAlert {
+	filtered := []*amAlert{}
+	for _, alert := range alerts {
+		for _, lbl := range alert.Labels {
+			if lbl.Name == r.label && lbl.Value == lvalue {
+				filtered = append(filtered, alert)
+				break
+			}
+		}
+	}
+	return filtered
 }

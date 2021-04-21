@@ -129,7 +129,7 @@ func (r *routes) postSilence(w http.ResponseWriter, req *http.Request) {
 	r.handler.ServeHTTP(w, req)
 }
 
-func (r *routes) deleteSilence(w http.ResponseWriter, req *http.Request) {
+func (r *routes) silence(w http.ResponseWriter, req *http.Request) {
 	silID := strings.TrimPrefix(req.URL.Path, "/api/v2/silence/")
 	if silID == "" || silID == req.URL.Path {
 		http.Error(w, "bad request", http.StatusBadRequest)
