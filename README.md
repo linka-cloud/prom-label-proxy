@@ -38,7 +38,9 @@ go get github.com/prometheus-community/prom-label-proxy
 
 ## How does this project work?
 
-This application proxies the `/federate`, `/api/v1/query`, `/api/v1/query_range`, `/api/v1/series`, `/api/v1/labels`, `/api/v1/label/<name>/values`, `/api/v1/rules`, `/api/v1/alerts` Prometheus endpoints as well as `/api/v2/silences` Alertmanager endpoint and it ensures that a particular label is enforced in the particular request and response.
+This application proxies the `/federate`, `/api/v1/query`, `/api/v1/query_range`, `/api/v1/series`, `/api/v1/labels`, 
+`/api/v1/label/<name>/values`, `/api/v1/rules`, `/api/v1/alerts` Prometheus endpoints as well as `/api/v2/silences`, 
+`/api/v2/alerts`, and `/api/v2/alerts/groups` Alertmanager endpoints and it ensures that a particular label is enforced in the particular request and response.
 
 Particularly, you can run `prom-label-proxy` with label `tenant` and point to example, demo Prometheus server e.g:
 
@@ -94,10 +96,13 @@ those (see https://github.com/prometheus/prometheus/issues/6178 for tracking dev
 ### Rules endpoint
 
 The proxy requests the `/api/v1/rules` Prometheus endpoint, discards the rules that don't contain an exact match of the label and returns the modified response to the client.
+This can be disabled by using the `--disable-rules-filter` flag, it will discard the rules' alerts that don't contain an exact match of the label and returns the modified response to the client.
 
 ### Alerts endpoint
 
 The proxy requests the `/api/v1/alerts` Prometheus endpoint, discards the rules that don't contain an exact match of the label and returns the modified response to the client.
+
+The proxy requests the `/api/v2/alerts` and `/api/v2/alerts/groups` Alertmanager endpoint, discards the rules that don't contain an exact match of the label and returns the modified response to the client.
 
 ### Silences endpoint
 

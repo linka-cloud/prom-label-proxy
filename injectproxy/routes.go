@@ -43,8 +43,9 @@ type routes struct {
 }
 
 type options struct {
-	enableLabelAPIs bool
-	pasthroughPaths []string
+	enableLabelAPIs    bool
+	pasthroughPaths    []string
+	disableRulesFilter bool
 }
 
 type Option interface {
@@ -70,6 +71,12 @@ func WithEnabledLabelsAPI() Option {
 func WithPassthroughPaths(paths []string) Option {
 	return optionFunc(func(o *options) {
 		o.pasthroughPaths = paths
+	})
+}
+
+func WithDisableRulesFilter(disable bool) Option {
+	return optionFunc(func(o *options) {
+		o.disableRulesFilter = disable
 	})
 }
 
@@ -178,11 +185,12 @@ func NewRoutes(upstream *url.URL, label string, opts ...Option) (*routes, error)
 
 	r.mux = mux.m
 	r.modifiers = map[string]func(*http.Response) error{
-		"/api/v1/rules":         modifyAPIResponse(r.filterRules),
+		"/api/v1/rules":         modifyAPIResponse(r.filterRules(opt.disableRulesFilter)),
 		"/api/v1/alerts":        modifyAPIResponse(r.filterAlerts),
 		"/api/v2/alerts":        r.filterAMAlerts,
 		"/api/v2/alerts/groups": r.filterAMAlertGroups,
 	}
+
 	proxy.ModifyResponse = r.ModifyResponse
 	return r, nil
 }

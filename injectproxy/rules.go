@@ -206,30 +206,46 @@ func encodeResponse(resp *http.Response, v interface{}) error {
 	return nil
 }
 
-func (r *routes) filterRules(lvalue string, resp *apiResponse) (interface{}, error) {
-	var rgs rulesData
-	if err := json.Unmarshal(resp.Data, &rgs); err != nil {
-		return nil, errors.Wrap(err, "can't decode rules data")
-	}
+func (r *routes) filterRules(disableRulesFilter bool) func(lvalue string, resp *apiResponse) (interface{}, error) {
+	return func(lvalue string, resp *apiResponse) (interface{}, error) {
+		var rgs rulesData
+		if err := json.Unmarshal(resp.Data, &rgs); err != nil {
+			return nil, errors.Wrap(err, "can't decode rules data")
+		}
 
-	filtered := []*ruleGroup{}
-	for _, rg := range rgs.RuleGroups {
-		var rules []rule
-		for _, rule := range rg.Rules {
-			for _, lbl := range rule.Labels() {
-				if lbl.Name == r.label && lbl.Value == lvalue {
+		filtered := []*ruleGroup{}
+		for _, rg := range rgs.RuleGroups {
+			var rules []rule
+			for _, rule := range rg.Rules {
+				if disableRulesFilter {
+					var alerts []*alert
+					for _, alert := range rule.Alerts {
+						for _, lbl := range alert.Labels {
+							if lbl.Name == r.label && lbl.Value == lvalue {
+								alerts = append(alerts, alert)
+								break
+							}
+						}
+					}
+					rule.Alerts = alerts
 					rules = append(rules, rule)
-					break
+				} else {
+					for _, lbl := range rule.Labels() {
+						if lbl.Name == r.label && lbl.Value == lvalue {
+							rules = append(rules, rule)
+							break
+						}
+					}
 				}
 			}
+			if len(rules) > 0 {
+				rg.Rules = rules
+				filtered = append(filtered, rg)
+			}
 		}
-		if len(rules) > 0 {
-			rg.Rules = rules
-			filtered = append(filtered, rg)
-		}
-	}
 
-	return &rulesData{RuleGroups: filtered}, nil
+		return &rulesData{RuleGroups: filtered}, nil
+	}
 }
 
 func (r *routes) filterAlerts(lvalue string, resp *apiResponse) (interface{}, error) {
