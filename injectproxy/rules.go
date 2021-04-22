@@ -79,10 +79,12 @@ type rulesData struct {
 }
 
 type ruleGroup struct {
-	Name     string  `json:"name"`
-	File     string  `json:"file"`
-	Rules    []rule  `json:"rules"`
-	Interval float64 `json:"interval"`
+	Name           string     `json:"name"`
+	File           string     `json:"file"`
+	Rules          []rule     `json:"rules"`
+	Interval       float64    `json:"interval"`
+	LastEvaluation *time.Time `json:"lastEvaluation"`
+	EvaluationTime float64    `json:"evaluationTime"`
 }
 
 type rule struct {
@@ -134,16 +136,19 @@ func (r *rule) UnmarshalJSON(b []byte) error {
 }
 
 type alertingRule struct {
-	Name        string        `json:"name"`
-	Query       string        `json:"query"`
-	Duration    float64       `json:"duration"`
-	Labels      labels.Labels `json:"labels"`
-	Annotations labels.Labels `json:"annotations"`
-	Alerts      []*alert      `json:"alerts"`
-	Health      string        `json:"health"`
-	LastError   string        `json:"lastError,omitempty"`
+	Name           string        `json:"name"`
+	Query          string        `json:"query"`
+	Duration       float64       `json:"duration"`
+	LastEvaluation *time.Time    `json:"lastEvaluation"`
+	EvaluationTime float64       `json:"evaluationTime"`
+	Labels         labels.Labels `json:"labels"`
+	Annotations    labels.Labels `json:"annotations"`
+	Alerts         []*alert      `json:"alerts"`
+	Health         string        `json:"health"`
+	LastError      string        `json:"lastError,omitempty"`
 	// Type of an alertingRule is always "alerting".
-	Type string `json:"type"`
+	Type  string `json:"type"`
+	State string `json:"state"`
 }
 
 type recordingRule struct {
@@ -215,10 +220,10 @@ func (r *routes) filterRules(disableRulesFilter bool) func(lvalue string, resp *
 
 		filtered := []*ruleGroup{}
 		for _, rg := range rgs.RuleGroups {
-			var rules []rule
+			rules := []rule{}
 			for _, rule := range rg.Rules {
 				if disableRulesFilter {
-					var alerts []*alert
+					alerts := []*alert{}
 					for _, alert := range rule.Alerts {
 						for _, lbl := range alert.Labels {
 							if lbl.Name == r.label && lbl.Value == lvalue {
